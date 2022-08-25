@@ -1,2 +1,10 @@
-.vscode/
-.DS_Store
+# .vscode/
+# **.dSYM
+# supportclasses/**
+# .DS_Store
+**
+!.gitignore
+!*.cpp
+!*.c
+!*.h
+!*.ppm
