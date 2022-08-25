@@ -1,5 +1,5 @@
 /*
-clang++ opencv_test.cpp -std=c++11 -o opencv_test -L/usr/local/lib/opencv4.5.5 -lopencv_core -lopencv_highgui -lopencv_imgcodecs && ./opencv_test
+c++ opencv_test.cpp -std=c++11 -o opencv_test -lopencv_core -lopencv_highgui -lopencv_imgcodecs && ./opencv_test
 */
 #include<stdio.h>
 #include<opencv2/opencv.hpp>

@@ -1,5 +1,5 @@
 /*
-c++ rendering_pipeline.cpp -std=c++11 -o rendering_pipeline && ./rendering_pipeline
+c++ rendering_pipeline.cpp -std=c++17 -o rendering_pipeline && ./rendering_pipeline
 */
 #include<stdio.h>
 #include<vector>
@@ -7,6 +7,7 @@ c++ rendering_pipeline.cpp -std=c++11 -o rendering_pipeline && ./rendering_pipel
 #include<functional>
 #include<glm/ext.hpp>
 #include<glm/glm.hpp>
+#include"thread_pool.h"
 using std::vector;
 using std::function;
 using glm::vec2;
@@ -256,8 +257,6 @@ vec3 homo_to_3D(const vec4& hv, const Camera& camera) {
     float tf2 = glm::tan(glm::radians(camera.deg_fov / 2));
     return vec3(hv.x * tf2 * camera.aspect, hv.y * tf2, -hv.w);
 }
-// 1. 对于每个三角形，计算每个点的齐次坐标
-// 2. 对三角形进行裁剪，得到新的三角形集合(homogeneous)
 vector<TriangleAttribute> geometry_process(const Scene& scene, const Camera& camera) {
     vector<TriangleAttribute> tri_attrs;
     mat4 projection = glm::perspective(glm::radians(camera.deg_fov), camera.aspect, camera.z_near, camera.z_far);
@@ -270,19 +269,17 @@ vector<TriangleAttribute> geometry_process(const Scene& scene, const Camera& cam
         for(int j = 0; j < splited_tris.size(); j++) {
             TriangleAttribute& tri_attr = splited_tris[j];
             for(int k = 0; k < 3; k++) {    // derive attributes from old triangles
-                tri_attr.wd_pos[k] = homo_to_3D(tri_attr.vertices[k], camera);
-                tri_attr.normals  [k] = barycentric3D(cal_bary3D(tri_attr.wd_pos[k], tri.vertices), tri.normals);
-                tri_attr.bsdf         = tri.bsdf;
+                tri_attr.wd_pos [k] = homo_to_3D(tri_attr.vertices[k], camera);
+                tri_attr.normals[k] = barycentric3D(cal_bary3D(tri_attr.wd_pos[k], tri.vertices), tri.normals);
+                tri_attr.bsdf       = tri.bsdf;
             }
         }
         tri_attrs.insert(tri_attrs.end(), splited_tris.begin(), splited_tris.end());
     }
     return tri_attrs;
 }
-// 3. 接下来需要每个点的z值，即-1/z用来计算透视正确的插值，这里可以通过w的值直接计算: -1/z = 1/w
-// 4. 遍历新的三角形集合，对于vert中的每一个值，如worldpos, normal等，进行正确的像素插值并存储起来
 void perspective_divide(TriangleAttribute& tri_attr) { tri_attr.vertices[0] /= tri_attr.vertices[0].w; tri_attr.vertices[1] /= tri_attr.vertices[1].w; tri_attr.vertices[2] /= tri_attr.vertices[2].w; }
-void compute_fragents(Image& image, vector<TriangleAttribute>& tri_attrs, Fragment frags[]) {
+void compute_fragments(Image& image, vector<TriangleAttribute>& tri_attrs, Fragment frags[]) {
     int w = image.w, h = image.h;
     for(int i = 0; i < tri_attrs.size(); i++) {
         TriangleAttribute& tri = tri_attrs[i];
@@ -299,7 +296,7 @@ void compute_fragents(Image& image, vector<TriangleAttribute>& tri_attrs, Fragme
         for(int j = 0; j < 3; j++) {        // pre-compute for perspective-correct intersection
             vertexW [j] = -1.0f / tri.wd_pos[j].z;
             vertexPw[j] = tri.wd_pos[j] * vertexW[j];
-            vertexNw[j] = tri.normals  [j] * vertexW[j];
+            vertexNw[j] = tri.normals[j] * vertexW[j];
         }
         for(int y = y_min; y <= y_max; y++) {
             for(int x = x_min; x <= x_max; x++) {
@@ -326,77 +323,38 @@ void compute_fragents(Image& image, vector<TriangleAttribute>& tri_attrs, Fragme
         }
     }
 }
-void rasterization2(Image& image, const Scene& scene, const Camera& camera) {
-    int w = image.w, h = image.h;
-    vector<TriangleAttribute> tri_attrs = geometry_process(scene, camera);  // after homo clip, before perspective div
-    Fragment* frags = new Fragment[w*h];
-    compute_fragents(image, tri_attrs, frags);
-    for(int i = 0; i < w*h; i++) {
-        const Fragment& frag = frags[i];
-        int x, y;
-        vec3 radiance = shade(scene, frag.bsdf, frag.wd_pos, frag.normal, -glm::normalize(frag.wd_pos));
-        u8vec3 col(gamma_encode(radiance.r), gamma_encode(radiance.g), gamma_encode(radiance.b));
-        image.get_xy(i, x, y);
-        image.fill_color(x, y, col);
-    }
-    delete[] frags;
-    image.write("rendering_pipeline.ppm");
-}
-
 void rasterization(Image& image, const Scene& scene, const Camera& camera) {
     int w = image.w, h = image.h;
     vector<TriangleAttribute> tri_attrs = geometry_process(scene, camera);  // after homo clip, before perspective div
-    for(int i = 0; i < tri_attrs.size(); i++) {
-        TriangleAttribute& tri = tri_attrs[i];
-        perspective_divide(tri);               // perspective divide
-        
-        glm::i32vec2 scr_coords[3];
-        screen_mapping(tri, w, h, scr_coords);  // screen mapping
-
-        int x_min, y_min, x_max, y_max;
-        compute_bounding_box(scr_coords, w, h, x_min, y_min, x_max, y_max); // compute bounding box
-        
-        float vertexW [3];
-        vec3  vertexPw[3], vertexNw[3];
-        for(int j = 0; j < 3; j++) {
-            vertexW [j] = -1.0f / tri.wd_pos[j].z;
-            vertexPw[j] = tri.wd_pos[j] * vertexW[j];
-            vertexNw[j] = tri.normals  [j] * vertexW[j];
-        }
-        for(int y = y_min; y <= y_max; y++) {
-            for(int x = x_min; x <= x_max; x++) {
-                vec3 weights = vec3(
-                    cal_bary2D(scr_coords[0], scr_coords[1], scr_coords[2], vec2(x, y)),
-                    cal_bary2D(scr_coords[1], scr_coords[2], scr_coords[0], vec2(x, y)),
-                    cal_bary2D(scr_coords[2], scr_coords[0], scr_coords[1], vec2(x, y))
-                );
-                if(weights[0] >= 0 && weights[0] <= 1 &&
-                   weights[1] >= 0 && weights[1] <= 1 &&
-                   weights[2] >= 0 && weights[2] <= 1   ) {
-                    vec3 inter_wd_pos = barycentric3D(weights, vertexPw) / barycentric3D(weights, vertexW);
-                    vec3 inter_normal = barycentric3D(weights, vertexNw) / barycentric3D(weights, vertexW);
-                    inter_normal = glm::normalize(inter_normal);
-                    float dist = glm::abs(inter_wd_pos.z);
-                    if(dist < image.z_buffer[image.get_index(x, y)]) {
-                        image.z_buffer[image.get_index(x, y)] = dist;
-                        vec3 radiance = shade(scene, tri.bsdf, inter_wd_pos, inter_normal, glm::normalize(-inter_wd_pos));
-                        glm::u8vec3 col(gamma_encode(radiance.r), gamma_encode(radiance.g), gamma_encode(radiance.b));
-                        image.fill_color(x, y, col);
-                    }
+    Fragment* frags = new Fragment[w*h];
+    compute_fragments(image, tri_attrs, frags);
+    {
+        fixed_thread_pool pool(32);
+        for(int i = 0; i < w*h; i++) {
+            pool.execute([i, &image, &frags, &scene](){
+                if(image.z_buffer[i] != std::numeric_limits<float>::infinity()) {
+                    const Fragment& frag = frags[i];
+                    int x, y;
+                    vec3 radiance = shade(scene, frag.bsdf, frag.wd_pos, frag.normal, -glm::normalize(frag.wd_pos));
+                    u8vec3 col(gamma_encode(radiance.r), gamma_encode(radiance.g), gamma_encode(radiance.b));
+                    image.get_xy(i, x, y);
+                    image.fill_color(x, y, col);
+                    
                 }
-            }
-        }        
+            });
+        }
     }
+    delete[] frags;
     image.write("rendering_pipeline.ppm");
 }
 void init_scene(Scene& scene) {
     BSDF bsdf;
     bsdf.diff_color = vec3(0.05f, 0.4f, 0.1f);
     bsdf.spec_color = vec3( 1.0f, 1.0f, 1.0f);
-    bsdf.spec_gloss = 64.0f;
+    bsdf.spec_gloss = 320.0f;
 
     Triangle tri(vec3(  -0.8f + 0.2f,   2.0f, -4.0f), 
-                 vec3(  -1.6f + 0.2f,  -1.0f, -1.0f), 
+                 vec3(  -1.6f + 0.2f,  -1.0f, -2.0f), 
                  vec3(   1.5f + 0.2f,  -1.0f, -4.0f), 
                  bsdf);
     scene.triangles.push_back(tri);
@@ -429,13 +387,12 @@ void init_scene(Scene& scene) {
     scene.lights.push_back(light);
     return;
 }
-
 int main() {
     int w = 1024, h = 1024;
     Image image(w, h);
-    Camera camera(90.0f, 1.0f, 100.0f, (float)w / h);
+    Camera camera(90.0f, 0.3f, 100.0f, (float)w / h);
     Scene scene;
     init_scene(scene);
-    rasterization2(image, scene, camera);
+    rasterization(image, scene, camera);
     return 0;
 }
