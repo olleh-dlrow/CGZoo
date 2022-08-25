@@ -2,7 +2,10 @@
 # **.dSYM
 # supportclasses/**
 # .DS_Store
-**
+*
+!readme/
+!readme/*
+!readme.md
 !.gitignore
 !*.cpp
 !*.c
