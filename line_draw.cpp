@@ -85,6 +85,76 @@ void draw_line(Color colors[], Line& line,  const Color& color, int h, int w) {
 
 }
 
+/*
+for dx > 0, dy > 0, 0 < dy/dx < 1：
+1. 输入线段的两个端点v0, v1
+2. 计算决策值p0 = 2dy - dx
+3. if p0 < 0, 下一个点是(xi + 1, yi), pi+1 = pi + 2dy
+4. if p0 >= 0, 下一个点是(xi + 1, yi + 1), pi+1 = pi + 2dy - 2dx
+5. 重复直到xi = x1
+*/
+void plot_line_low(Color colors[], Vec2 v0, Vec2 v1, Color color, int h, int w) {
+    int dy = v1.y - v0.y, dx = v1.x - v0.x;
+    int dir = 1;
+    if(dy < 0) {
+        dir = -1;
+        dy = -dy;
+    }
+    int p0 = 2 * dy - dx;
+    int xi = v0.x, yi = v0.y, pi = p0;
+    while(xi <= v1.x) {
+        colors[(h - 1 - yi) * w + xi] = color;
+        if(pi < 0) {
+            pi += 2 * dy;
+        } else {
+            yi += dir;
+            pi += 2 * dy - 2 * dx;
+        }
+        xi += 1;
+    }
+}
+
+void plot_line_high(Color colors[], Vec2 v0, Vec2 v1, Color color, int h, int w) {
+    int dy = v1.y - v0.y, dx = v1.x - v0.x;
+    int dir = 1;
+    if(dx < 0) {
+        dir = -1;
+        dx = -dx;
+    }
+    int p0 = 2 * dx - dy;
+    int xi = v0.x, yi = v0.y, pi = p0;
+    while(yi <= v1.y) {
+        colors[(h - 1 - yi) * w + xi] = color;
+        if(pi < 0) {
+            pi += 2 * dx;
+        } else {
+            xi += dir;
+            pi += 2 * dx - 2 * dy;
+        }
+        yi += 1;
+    }
+}
+
+/*
+// see wiki
+1. 根据斜率判断选择Low还是High
+2. 根据v0, v1相对位置判断是否置换位置
+*/
+void draw_line2(Color colors[], Vec2 v0, Vec2 v1, Color color, int h, int w) {
+    if(abs(v1.y - v0.y) < abs(v1.x - v0.x)) {
+        if(v0.x > v1.x) {
+            plot_line_low(colors, v1, v0, color, h, w);
+        } else {
+            plot_line_low(colors, v0, v1, color, h, w);
+        }
+    } else {
+        if(v0.y > v1.y) {
+            plot_line_high(colors, v1, v0, color, h, w);
+        } else {
+            plot_line_high(colors, v0, v1, color, h, w);
+        }        
+    }
+}
 
 
 int main(int argc, char* argv[])
@@ -115,7 +185,8 @@ int main(int argc, char* argv[])
         Vec2 p(center.x + r * cos(theta), center.y + r * sin(theta));
         float rad = theta * M_PI / 180.0;
         Line line(center, Vec2(center.x + r * cos(rad), center.y + r * sin(rad)));
-        draw_line(colors, line, select_colors[iter_color], h, w);
+        //draw_line(colors, line, select_colors[iter_color], h, w);
+        draw_line2(colors, center, Vec2(center.x + r * cos(rad), center.y + r * sin(rad)), select_colors[iter_color], h, w);
         iter_color = (iter_color + 1) % len;
         theta += delta_theta;
     }
