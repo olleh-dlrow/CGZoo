@@ -4,23 +4,39 @@
 
 ## 介绍
 
+## 路径追踪
+
+- 网格加载
+- gamma校正
+- 光源均匀采样
+- Sobol采样
+- BVH加速
+- 线程加速
+- 渲染方程
+- 漫反射BSDF
+- 蒙特卡洛积分
+- 射线-包围盒相交
+- 射线-三角形相交
+
+实现：[path_tracing](path_tracing.cpp)
+
+
+
+![](readme/path_tracing2048spp.png)
+
+
+
 ## Bresenham算法画直线
 
 实现：[line_draw](line_draw.cpp)
 
 ![image-20220825214822610](readme/image-20220825214822610.png)
 
-
-
 ## gamma校正
 
 实现：[gamma](gamma.cpp)
 
 ![image-20220825215122847](readme/image-20220825215122847.png)
-
-
-
-
 
 ## 单点透视
 
@@ -36,9 +52,9 @@
 
 ## 扫描线算法
 
+实现：[scan_line](scan_line.cpp)
+
 ![image-20220920002644563](readme/image-20220920002644563.png)
-
-
 
 ## 简单ray casting
 
@@ -53,8 +69,6 @@
 
 ![image-20220825220133462](readme/image-20220825220133462.png)
 
-
-
 ## 简单光栅化
 
 相比于光线透射，在三角形交接处有更多的锯齿，这可能是由于采样时的浮点舍入导致
@@ -67,8 +81,6 @@
 实现：[rasterization_renderer](rasterization_renderer.cpp)
 
 ![image-20220825220448787](readme/image-20220825220448787.png)
-
-
 
 ## 简单软光栅
 

@@ -3,6 +3,8 @@
 # supportclasses/**
 # .DS_Store
 *
+!models/
+!models/**
 !readme/
 !readme/*
 !readme.md
@@ -10,4 +12,4 @@
 !*.cpp
 !*.c
 !*.h
-!*.ppm
+!new-joe-kuo-6.21201
